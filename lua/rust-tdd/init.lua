@@ -8,7 +8,6 @@ function M.setup()
       pattern = "*.rs",
       callback = function()
          local source_buf = vim.api.nvim_get_current_buf()
-         print(ns, source_buf)
          vim.api.nvim_buf_clear_namespace(source_buf, ns, 0, -1)
          vim.api.nvim_buf_clear_namespace(source_buf, ns, 0, -1)
          local buf_lines = vim.api.nvim_buf_get_lines(source_buf, 0, -1, false)
