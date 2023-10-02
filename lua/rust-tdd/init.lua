@@ -13,11 +13,24 @@ local function has_tests(bufnr)
                (identifier) @attribute_argument (#eq? @attribute_argument "test")
             )
          )
-      )
+      ) @attribute
    ]])
 
-   local id,_node,_metadata = query:iter_captures(root, bufnr, 0, -1)()
-   return id ~= nil
+   local id,node,_metadata = query:iter_captures(root, bufnr, 0, -1)()
+   local test_mod = node:next_sibling()
+   return id ~= nil,test_mod:start()
+end
+
+local function show_diagnostic(source_buf, ns, line_test_mod, msg, severity)
+   local diag = { {
+         bufnr = source_buf,
+         lnum = line_test_mod,
+         col = -1,
+         severity = severity,
+         message = msg,
+         code = "Hint",
+      } }
+      vim.diagnostic.set(ns, source_buf, diag, {})
 end
 
 function M.setup()
@@ -30,12 +43,25 @@ function M.setup()
          vim.api.nvim_buf_clear_namespace(source_buf, ns, 0, -1)
          vim.api.nvim_buf_clear_namespace(source_buf, ns, 0, -1)
 
-         if not has_tests(source_buf) then
+         local has_t, line_test_mod = has_tests(source_buf)
+         if not has_t then
             return
          end
-  
+         
+         local old_dir = nil
+         local fullpath = vim.api.nvim_buf_get_name(source_buf)
+         local cur_dir = vim.loop.cwd()
+         local dir, file = fullpath:match('(.*/)(.*)')
+         -- TODO: this check is not sufficient
+         if dir:find(cur_dir) == nil then
+            show_diagnostic(source_buf, ns, line_test_mod, "Change into project directory to get instant test feedback", vim.diagnostic.severity.HINT)
+            return
+         end
+         
          local buf_lines = vim.api.nvim_buf_get_lines(source_buf, 0, -1, false)
          local fails = {}
+         local fail_count = 0
+         local succ_count = 0
          vim.fn.jobstart({ "cargo", "test" }, {
             stdout_buffered = true,
             on_stdout = function(_, data)
@@ -47,9 +73,11 @@ function M.setup()
                      _, _, test_name = string.find(line, "test %a+::(.*) ... FAILED")
                      if test_name ~= nil then
                         tmp = "❌"
+                        fail_count = fail_count + 1
                      end
                   else
                      tmp = "✅"
+                     succ_count = succ_count + 1
                      success = true
                   end
                   if tmp then
@@ -86,15 +114,36 @@ function M.setup()
     user_data: Arbitrary data plugins or users can add
    --]]
                      end
-                     --vim.api.nvim_buf_set_lines(bufnr, -1, -1, false, {tmp})
                   end
                end
-               --vim.api.nvim_buf_set_lines(bufnr, 0, -1, false, data)
             end,
 
             -- "cargo test" exited
             on_exit = function()
+               local info_string = "["
+               for i,fail in ipairs(fails) do
+                  info_string = info_string .. fail.user_data.test_name
+                  if i ~= #fails then
+                     info_string = info_string .. ", "
+                  end
+               end
+               info_string = info_string .. "]"
+               table.insert(fails, {
+                  bufnr = source_buf,
+                  lnum = line_test_mod,
+                  col = -1,
+                  severity = vim.diagnostic.severity.ERROR,
+                  message = info_string,
+                  source = "cargo test",
+                  code = "Failed tests",
+               })
+               --]]
+               -- Diagnostics next to failed tests
                vim.diagnostic.set(ns, source_buf, fails, {})
+               -- Success/Fail ratio text next to beginning of test module
+               vim.api.nvim_buf_set_extmark(source_buf, ns, line_test_mod, 0, {
+                  virt_text = { { succ_count .. "/" .. (succ_count+fail_count) .. " tests passed", "Test" } },
+               })
             end
          })
       end
