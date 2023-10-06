@@ -33,6 +33,27 @@ local function show_diagnostic(source_buf, ns, line_test_mod, msg, severity)
       vim.diagnostic.set(ns, source_buf, diag, {})
 end
 
+local function file_exist(file)
+   local f = io.open(file, "r")
+   if f then f:close() end
+   print("File " .. file .. " exists: " .. tostring(f ~= nil))
+   return f ~= nil
+end
+
+local function cur_dir_is_in_project_folder(file_path)
+   local cur_dir = vim.loop.cwd() .. "/"
+   local dir, file = file_path:match('(.*/)(.*)')
+   if dir:find(cur_dir) ~= nil then
+      
+      print("Subdir check completed")
+      if file_exist(cur_dir .. "Cargo.toml") or string.find(file, "src") ~= nil then
+         return true
+      end
+   end
+
+   return false
+end
+
 function M.setup()
    vim.api.nvim_create_autocmd("BufWritePost", {
       group = vim.api.nvim_create_augroup("ic0r", { clear = true }),
@@ -42,18 +63,15 @@ function M.setup()
          local source_buf = vim.api.nvim_get_current_buf()
          vim.api.nvim_buf_clear_namespace(source_buf, ns, 0, -1)
          vim.api.nvim_buf_clear_namespace(source_buf, ns, 0, -1)
+         vim.diagnostic.reset(ns, source_buf)
 
          local has_t, line_test_mod = has_tests(source_buf)
          if not has_t then
             return
          end
          
-         local old_dir = nil
          local fullpath = vim.api.nvim_buf_get_name(source_buf)
-         local cur_dir = vim.loop.cwd()
-         local dir, file = fullpath:match('(.*/)(.*)')
-         -- TODO: this check is not sufficient
-         if dir:find(cur_dir) == nil then
+         if not cur_dir_is_in_project_folder(fullpath) then
             show_diagnostic(source_buf, ns, line_test_mod, "Change into project directory to get instant test feedback", vim.diagnostic.severity.HINT)
             return
          end
@@ -120,26 +138,28 @@ function M.setup()
 
             -- "cargo test" exited
             on_exit = function()
-               local info_string = "["
-               for i,fail in ipairs(fails) do
-                  info_string = info_string .. fail.user_data.test_name
-                  if i ~= #fails then
-                     info_string = info_string .. ", "
+               if #fails > 0 then
+                  local info_string = "["
+                  for i,fail in ipairs(fails) do
+                     info_string = info_string .. fail.user_data.test_name
+                     if i ~= #fails then
+                        info_string = info_string .. ", "
+                     end
                   end
+                  info_string = info_string .. "]"
+                  table.insert(fails, {
+                     bufnr = source_buf,
+                     lnum = line_test_mod,
+                     col = -1,
+                     severity = vim.diagnostic.severity.ERROR,
+                     message = info_string,
+                     source = "cargo test",
+                     code = "Failed tests",
+                  })
+                  --]]
+                  -- Diagnostics next to failed tests
+                  vim.diagnostic.set(ns, source_buf, fails, {})
                end
-               info_string = info_string .. "]"
-               table.insert(fails, {
-                  bufnr = source_buf,
-                  lnum = line_test_mod,
-                  col = -1,
-                  severity = vim.diagnostic.severity.ERROR,
-                  message = info_string,
-                  source = "cargo test",
-                  code = "Failed tests",
-               })
-               --]]
-               -- Diagnostics next to failed tests
-               vim.diagnostic.set(ns, source_buf, fails, {})
                -- Success/Fail ratio text next to beginning of test module
                vim.api.nvim_buf_set_extmark(source_buf, ns, line_test_mod, 0, {
                   virt_text = { { succ_count .. "/" .. (succ_count+fail_count) .. " tests passed", "Test" } },
