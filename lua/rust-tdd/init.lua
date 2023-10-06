@@ -17,8 +17,14 @@ local function has_tests(bufnr)
    ]])
 
    local id,node,_metadata = query:iter_captures(root, bufnr, 0, -1)()
+   if node == nil then
+      return false, nil
+   end
    local test_mod = node:next_sibling()
-   return id ~= nil,test_mod:start()
+   if test_mod == nil then
+      return false, nil
+   end
+   return true,test_mod:start()
 end
 
 local function show_diagnostic(source_buf, ns, line_test_mod, msg, severity)
@@ -33,18 +39,12 @@ local function show_diagnostic(source_buf, ns, line_test_mod, msg, severity)
       vim.diagnostic.set(ns, source_buf, diag, {})
 end
 
-local function file_exist(file)
-   local f = io.open(file, "r")
-   if f then f:close() end
-   return f ~= nil
-end
-
 local function cur_dir_is_in_project_folder(file_path)
    local cur_dir = vim.loop.cwd() .. "/"
    local dir, file = file_path:match('(.*/)(.*)')
    if dir:find(cur_dir) ~= nil then
       
-      if file_exist(cur_dir .. "Cargo.toml") or string.find(file, "src") ~= nil then
+      if vim.loop.fs_stat(cur_dir .. "Cargo.toml") or string.find(file, "src") ~= nil then
          return true
       end
    end
