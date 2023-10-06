@@ -36,7 +36,6 @@ end
 local function file_exist(file)
    local f = io.open(file, "r")
    if f then f:close() end
-   print("File " .. file .. " exists: " .. tostring(f ~= nil))
    return f ~= nil
 end
 
@@ -45,7 +44,6 @@ local function cur_dir_is_in_project_folder(file_path)
    local dir, file = file_path:match('(.*/)(.*)')
    if dir:find(cur_dir) ~= nil then
       
-      print("Subdir check completed")
       if file_exist(cur_dir .. "Cargo.toml") or string.find(file, "src") ~= nil then
          return true
       end
