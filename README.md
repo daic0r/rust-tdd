@@ -8,4 +8,4 @@ Runs `cargo test` when a buffer containing a Rust source file that contains test
 # Installation
 
 Use your favorite package manager and add
-`daic0r/rust-tdd'
+`daic0r/rust-tdd`
